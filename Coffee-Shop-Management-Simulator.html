@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>琥珀色の経営学 - Amber Management -</title>
+    <style>
+        :root {
+            --primary-brown: #3e2723;
+            --accent-gold: #ffc107;
+            --bg-cream: #fdf5e6;
+            --panel-white: #ffffff;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif;
+            background-color: var(--bg-cream);
+            color: var(--primary-brown);
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        #game-container {
+            background: var(--panel-white);
+            width: 100%;
+            max-width: 450px;
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            border-top: 10px solid var(--primary-brown);
+        }
+
+        .game-title { font-family: 'Georgia', serif; font-size: 2rem; text-align: center; margin: 0; letter-spacing: 2px; }
+        .game-subtitle { font-size: 0.8rem; text-align: center; margin-bottom: 20px; opacity: 0.7; font-style: italic; }
+
+        /* ステータス周り */
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-card { background: #efebe9; padding: 10px; border-radius: 10px; font-weight: bold; font-size: 0.9rem; }
+        
+        /* ゲージ */
+        .progress-container { margin-top: 5px; }
+        .progress-bg { width: 100%; height: 10px; background: #d7ccc8; border-radius: 5px; overflow: hidden; }
+        .progress-fill { height: 100%; width: 100%; transition: width 0.4s ease; }
+        .stamina-fill { background: #4caf50; }
+        .stamina-fill.low { background: #f44336; }
+
+        /* セクション・操作 */
+        .section-title { border-left: 4px solid var(--primary-brown); padding-left: 8px; margin: 20px 0 10px; font-size: 0.9rem; font-weight: bold; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        button { 
+            padding: 12px 5px; cursor: pointer; border: none; border-radius: 8px; 
+            background: var(--primary-brown); color: white; font-weight: bold; font-size: 0.8rem; transition: 0.2s;
+        }
+        button:hover { opacity: 0.8; transform: translateY(-1px); }
+        button:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+        .btn-sub { background: #8d6e63; }
+        .btn-special { background: #6a1b9a; grid-column: span 2; }
+
+        /* ログ・通知 */
+        #log { 
+            margin-top: 20px; font-size: 0.75rem; color: #5d4037; height: 80px; 
+            overflow-y: hidden; background: #fcfcfc; padding: 10px; border: 1px inset #eee; border-radius: 5px;
+        }
+        #achievement-notify {
+            position: fixed; top: -100px; left: 50%; transform: translateX(-50%);
+            width: 280px; background: var(--accent-gold); color: #333; padding: 15px;
+            border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); transition: 0.5s; z-index: 100;
+        }
+        #achievement-notify.show { top: 20px; }
+
+        /* ゲームオーバー画面 */
+        #game-over {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); color: white; text-align: center; padding-top: 150px; z-index: 1000;
+        }
+    </style>
+</head>
+<body onclick="startAudio()">
+
+<div id="game-over">
+    <h1>🏢 破産（GAME OVER）</h1>
+    <p id="cause-of-death"></p>
+    <button onclick="resetGame()">最初からやり直す</button>
+</div>
+
+<div id="achievement-notify"></div>
+
+<div id="game-container">
+    <h1 class="game-title">琥珀色の経営学</h1>
+    <p class="game-subtitle">- Amber Management Simulation -</p>
+
+    <div class="stat-grid">
+        <div class="stat-card">資金: <span id="money">1000</span>円</div>
+        <div class="stat-card">ランク: <span id="shop-rank">キッチンカー</span></div>
+        <div class="stat-card" style="grid-column: span 2;">
+            体力: <span id="stamina-text">100</span>%
+            <div class="progress-bg"><div id="stamina-bar" class="progress-fill stamina-fill"></div></div>
+        </div>
+        <div class="stat-card">豆: <span id="beans">200</span>g</div>
+        <div class="stat-card">牛乳: <span id="milk">0</span>ml</div>
+        <div class="stat-card" style="grid-column: span 2;">
+            在庫: ☕ <span id="coffee-stock">0</span> / 🥛 <span id="latte-stock">0</span>
+            <div style="font-size: 0.7rem; opacity: 0.6; margin-top:3px;">知名度: Lv.<span id="level">1</span> (客間隔: <span id="interval">4.0</span>s)</div>
+        </div>
+    </div>
+
+    <button id="toggle-btn" class="btn-special" onclick="toggleShop()">お店を休む</button>
+
+    <div class="section-title">仕入れ & マーケティング</div>
+    <div class="controls">
+        <button class="btn-sub" onclick="buyBeans()">豆通常(200g/400円)</button>
+        <button class="btn-sub" onclick="buyBeansBulk()">豆バルク(1kg/1500円)</button>
+        <button class="btn-sub" onclick="buyMilk()">牛乳(500ml/300円)</button>
+        <button id="ad-button" class="btn-sub" onclick="upgradeMarketing()">広告を出す(<span id="ad-cost">500</span>円)</button>
+    </div>
+
+    <div class="section-title">調理 & 設備</div>
+    <div class="controls">
+        <button onclick="brewCoffee()">コーヒー(豆20g)</button>
+        <button onclick="brewLatte()">ラテ(豆10g/乳100)</button>
+        <button id="staff-button" class="btn-sub" onclick="hireStaff()">バリスタ雇(￥<span id="staff-cost">2000</span>)</button>
+        <button id="expand-button" class="btn-sub" onclick="expandShop()">店舗拡大(￥10000〜)</button>
+    </div>
+
+    <div id="log">いらっしゃいませ。画面をクリックして音声を有効にしてください。</div>
+    
+    <div style="margin-top:15px; text-align:right;">
+        <button onclick="saveGame()" style="padding:5px 10px; background:#607d8b;">セーブ</button>
+        <button onclick="resetGame()" style="padding:5px 10px; background:#cfd8dc; color:#333;">リセット</button>
+    </div>
+</div>
+
+<audio id="bgm-jazz" loop src="https://assets.mixkit.co/music/preview/mixkit-jazz-curiosity-412.mp3"></audio>
+
+<script>
+    // --- 初期変数 ---
+    let money = 1000;
+    let beans = 200;
+    let milk = 0;
+    let coffeeStock = 0;
+    let latteStock = 0;
+    let stamina = 100;
+    let isOpen = true;
+
+    let staffCount = 0;
+    let staffCost = 2000;
+    let maxStaff = 1;
+
+    let marketingLevel = 1;
+    let customerInterval = 4000;
+    let adCost = 500;
+
+    let shopRank = "キッチンカー";
+    let rent = 0;
+    let hasShiftSystem = false;
+    let gameMinutes = 0;
+
+    let totalSales = 0;
+    let audioStarted = false;
+
+    const achievements = [
+        { id: 'sales100', title: '期待の新人', desc: '累計販売数100杯達成', target: 100, bonus: 2000, achieved: false },
+        { id: 'staff5', title: 'チーム経営', desc: 'バリスタを5人雇用', target: 5, type: 'staff', bonus: 5000, achieved: false },
+        { id: 'rich', title: '琥珀色の極致', desc: '資金10万円達成', target: 100000, type: 'money', bonus: 50000, achieved: false }
+    ];
+
+    // --- コアロジック ---
+
+    function update() {
+        document.getElementById('money').innerText = Math.floor(money).toLocaleString();
+        document.getElementById('beans').innerText = beans;
+        document.getElementById('milk').innerText = milk;
+        document.getElementById('coffee-stock').innerText = coffeeStock;
+        document.getElementById('latte-stock').innerText = latteStock;
+        document.getElementById('stamina-text').innerText = Math.floor(stamina);
+        document.getElementById('shop-rank').innerText = shopRank;
+        document.getElementById('level').innerText = marketingLevel;
+        document.getElementById('interval').innerText = (customerInterval / 1000).toFixed(1);
+        document.getElementById('ad-cost').innerText = adCost;
+        document.getElementById('staff-cost').innerText = staffCost;
+
+        // ゲージ
+        const sBar = document.getElementById('stamina-bar');
+        sBar.style.width = stamina + "%";
+        sBar.className = stamina < 30 ? "progress-fill stamina-fill low" : "progress-fill stamina-fill";
+
+        // ボタン制御
+        document.getElementById('ad-button').disabled = (money < adCost);
+        document.getElementById('staff-button').disabled = (money < staffCost || staffCount >= maxStaff);
+        document.getElementById('toggle-btn').innerText = isOpen ? "お店を休む" : "営業を再開する";
+        document.getElementById('toggle-btn').style.background = isOpen ? "#d32f2f" : "#388e3c";
+    }
+
+    function addLog(msg) {
+        const log = document.getElementById('log');
+        log.innerHTML = "・" + msg + "<br>" + log.innerHTML;
+    }
+
+    function startAudio() {
+        if (!audioStarted) {
+            document.getElementById('bgm-jazz').play();
+            audioStarted = true;
+            addLog("BGMを再生しました。");
+        }
+    }
+
+    // --- アクション ---
+
+    function buyBeans() { if(money>=400){ money-=400; beans+=200; update(); addLog("豆200g入荷"); } }
+    function buyBeansBulk() { if(money>=1500){ money-=1500; beans+=1000; update(); addLog("【卸売】豆1kg入荷"); } }
+    function buyMilk() { if(money>=300){ money-=300; milk+=500; update(); addLog("牛乳500ml入荷"); } }
+
+    function brewCoffee() {
+        if(beans>=20){ beans-=20; coffeeStock++; addLog("コーヒーを淹れました"); update(); }
+    }
+    function brewLatte() {
+        if(beans>=10 && milk>=100){ beans-=10; milk-=100; latteStock++; addLog("ラテを作りました"); update(); }
+    }
+
+    function upgradeMarketing() {
+        if(money>=adCost){
+            money-=adCost; marketingLevel++;
+            customerInterval = Math.max(800, customerInterval * 0.85);
+            adCost = Math.floor(adCost * 1.6);
+            addLog("広告で知名度が上がりました！"); update();
+        }
+    }
+
+    function hireStaff() {
+        if(money>=staffCost && staffCount < maxStaff){
+            money-=staffCost; staffCount++;
+            staffCost = Math.floor(staffCost * 1.7);
+            addLog("バリスタを雇用しました。"); update(); checkAchievements();
+        }
+    }
+
+    function expandShop() {
+        if(money>=10000 && shopRank==="キッチンカー"){
+            money-=10000; shopRank="路面店"; maxStaff=5; rent=2000;
+            addLog("路面店に拡大！家賃が発生します。");
+        } else if(money>=50000 && shopRank==="路面店"){
+            money-=50000; shopRank="大型店舗"; maxStaff=20; rent=8000;
+            addLog("大型店舗へ拡大！");
+        }
+        update();
+    }
+
+    function toggleShop() {
+        if(!isOpen && stamina < 10) return;
+        isOpen = !isOpen;
+        addLog(isOpen ? "営業再開" : "休業中...");
+        update();
+    }
+
+    // --- ループ処理 ---
+
+    // 客が来るループ
+    function customerLoop() {
+        if(isOpen && stamina > 0){
+            const wantsLatte = Math.random() < 0.4;
+            if(wantsLatte && latteStock > 0){
+                latteStock--; money += 800; totalSales++;
+                addLog("客「ラテ美味しい！」 +800円");
+            } else if(coffeeStock > 0){
+                coffeeStock--; money += 500; totalSales++;
+                addLog("客「落ち着く味だ」 +500円");
+            }
+            checkAchievements();
+            update();
+        }
+        setTimeout(customerLoop, customerInterval);
+    }
+
+    // 時間経過（体力・家賃・バリスタ）
+    setInterval(() => {
+        if(isOpen){
+            stamina = Math.max(0, stamina - (hasShiftSystem ? 0.4 : 0.8));
+            if(stamina <= 0){ isOpen = false; addLog("過労で倒れました！"); }
+            
+            // バリスタ自動調理
+            if(staffCount > 0){
+                for(let i=0; i<staffCount; i++){
+                    if(beans >= 20){ beans-=20; coffeeStock++; }
+                }
+            }
+
+            // 家賃
+            gameMinutes++;
+            if(gameMinutes % 60 === 0 && rent > 0){
+                money -= rent;
+                addLog(`【経費】家賃${rent}円支払い`);
+                if(money < 0) {
+                    document.getElementById('game-over').style.display = 'block';
+                    document.getElementById('cause-of-death').innerText = "家賃が払えず破産しました。";
+                }
+            }
+        } else {
+            stamina = Math.min(100, stamina + 4);
+        }
+        update();
+    }, 1000);
+
+    // --- 実績 & システム ---
+
+    function checkAchievements() {
+        achievements.forEach(ach => {
+            if(!ach.achieved){
+                let val = (ach.type === 'staff') ? staffCount : (ach.type === 'money' ? money : totalSales);
+                if(val >= ach.target){
+                    ach.achieved = true; money += ach.bonus;
+                    const n = document.getElementById('achievement-notify');
+                    n.innerHTML = `🏆 <b>実績解除: ${ach.title}</b><br>${ach.desc}<br>報酬: ${ach.bonus}円`;
+                    n.classList.add('show');
+                    setTimeout(() => n.classList.remove('show'), 5000);
+                }
+            }
+        });
+    }
+
+    function saveGame() {
+        const state = { money, beans, milk, coffeeStock, latteStock, staffCount, staffCost, marketingLevel, customerInterval, adCost, stamina, shopRank, rent, maxStaff, totalSales };
+        localStorage.setItem('amber_save', JSON.stringify(state));
+        addLog("セーブ完了");
+    }
+
+    function loadGame() {
+        const saved = localStorage.getItem('amber_save');
+        if(saved){
+            const d = JSON.parse(saved);
+            Object.assign(window, d); // 簡易的にグローバル変数へ割り当て
+            addLog("ロード完了"); update();
+        }
+    }
+
+    function resetGame() {
+        localStorage.removeItem('amber_save');
+        location.reload();
+    }
+
+    // 起動
+    loadGame();
+    customerLoop();
+    update();
+
+</script>
+</body>
+</html>
