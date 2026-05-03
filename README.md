@@ -49,3 +49,6 @@ index.html（または該当のファイル）をブラウザで開きます。
 
 📜 ライセンス
 このプロジェクトは MIT ライセンスの下で公開されています。
+
+<img width="662" height="1011" alt="スクリーンショット 2026-05-03 110833" src="https://github.com/user-attachments/assets/417468f0-73b0-4930-b98a-3b55e39da21a" />
+
